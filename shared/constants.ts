@@ -1,18 +1,18 @@
 export const RESUME_TARGET_MATRIX: Record<string, Record<string, number>> = {
   HIGH: {
-    Easy: 4,
-    Medium: 3,
+    Easy: 6,
+    Medium: 4,
     Tough: 2,
   },
   MEDIUM: {
     Easy: 5,
-    Medium: 4,
-    Tough: 3,
+    Medium: 3,
+    Tough: 2,
   },
   LOW: {
-    Easy: 6,
-    Medium: 5,
-    Tough: 4,
+    Easy: 4,
+    Medium: 3,
+    Tough: 2,
   },
 };
 

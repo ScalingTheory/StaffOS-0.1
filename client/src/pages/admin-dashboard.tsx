@@ -1230,12 +1230,15 @@ export default function AdminDashboard() {
     queryKey: ['/api/admin/employees']
   });
 
-  // Filter employees for HR-related tables (exclude system users like recruiters, team leaders, clients)
+  // Filter employees for HR-related tables (Employees Master)
+  // Only include employee_record role, exclude TL/TA (they belong in User Management), admin, and clients
   const hrEmployees = useMemo(() => {
     return employees.filter((emp: any) => 
-      emp.role !== 'recruiter' && 
-      emp.role !== 'team_leader' && 
-      emp.role !== 'client'
+      !emp.employeeId?.startsWith('STAFFOS') &&
+      emp.role !== 'client' &&
+      emp.role !== 'admin' &&
+      emp.role !== 'team_leader' &&
+      emp.role !== 'recruiter'
     );
   }, [employees]);
 
@@ -1280,17 +1283,22 @@ export default function AdminDashboard() {
     );
   }, [cashoutData, cashoutSearch]);
 
+  // Filter clients for Master Data - exclude login-only clients (those belong in User Management)
+  const masterDataClients = useMemo(() => {
+    return clients.filter((client: any) => !client.isLoginOnly);
+  }, [clients]);
+
   const filteredClients = useMemo(() => {
-    if (!clientMasterSearch.trim()) return clients;
+    if (!clientMasterSearch.trim()) return masterDataClients;
     const search = clientMasterSearch.toLowerCase();
-    return clients.filter((client: any) => 
+    return masterDataClients.filter((client: any) => 
       client.brandName?.toLowerCase().includes(search) ||
       client.location?.toLowerCase().includes(search) ||
       client.spoc?.toLowerCase().includes(search) ||
       client.website?.toLowerCase().includes(search) ||
       client.currentStatus?.toLowerCase().includes(search)
     );
-  }, [clients, clientMasterSearch]);
+  }, [masterDataClients, clientMasterSearch]);
 
   const filteredHrEmployees = useMemo(() => {
     if (!employeeMasterSearch.trim()) return hrEmployees;
@@ -1899,32 +1907,13 @@ export default function AdminDashboard() {
     }
   };
 
-  // Calculate priority distribution from requirements with toughness breakdown
-  // Handle cases where toughness may be undefined - default to 'Medium'
-  const priorityDistribution = useMemo(() => {
-    const getToughness = (req: any) => req.toughness || 'Medium';
-    const HIGH = {
-      Easy: requirements.filter((req: any) => req.criticality === 'HIGH' && getToughness(req) === 'Easy').length,
-      Medium: requirements.filter((req: any) => req.criticality === 'HIGH' && getToughness(req) === 'Medium').length,
-      Tough: requirements.filter((req: any) => req.criticality === 'HIGH' && getToughness(req) === 'Tough').length,
-    };
-    const MEDIUM = {
-      Easy: requirements.filter((req: any) => req.criticality === 'MEDIUM' && getToughness(req) === 'Easy').length,
-      Medium: requirements.filter((req: any) => req.criticality === 'MEDIUM' && getToughness(req) === 'Medium').length,
-      Tough: requirements.filter((req: any) => req.criticality === 'MEDIUM' && getToughness(req) === 'Tough').length,
-    };
-    const LOW = {
-      Easy: requirements.filter((req: any) => req.criticality === 'LOW' && getToughness(req) === 'Easy').length,
-      Medium: requirements.filter((req: any) => req.criticality === 'LOW' && getToughness(req) === 'Medium').length,
-      Tough: requirements.filter((req: any) => req.criticality === 'LOW' && getToughness(req) === 'Tough').length,
-    };
-    const high = requirements.filter((req: any) => req.criticality === 'HIGH').length;
-    const medium = requirements.filter((req: any) => req.criticality === 'MEDIUM').length;
-    const low = requirements.filter((req: any) => req.criticality === 'LOW').length;
-    const total = requirements.length;
-    
-    return { HIGH, MEDIUM, LOW, high, medium, low, total };
-  }, [requirements]);
+  // Static priority distribution - fixed counts that never change
+  // These represent the expected number of resumes to be delivered based on priority/criticality
+  const priorityDistribution = {
+    HIGH: { Easy: 6, Medium: 4, Tough: 2 },
+    MEDIUM: { Easy: 5, Medium: 3, Tough: 2 },
+    LOW: { Easy: 4, Medium: 3, Tough: 2 },
+  };
 
   const handleMemberClick = (member: any) => {
     setSelectedMember(member);
@@ -2047,21 +2036,17 @@ export default function AdminDashboard() {
   };
 
   const handleAddClientCredentials = (userData: any) => {
-    // Convert modal data to employee form format for client login
-    const employeeData = {
-      employeeId: userData.id || `STCL${Date.now()}`,
+    // Use the dedicated client credentials mutation
+    createClientCredentialsMutation.mutate({
+      firstName: userData.firstName,
+      lastName: userData.lastName,
       name: userData.name,
+      phoneNumber: userData.phoneNumber || '',
       email: userData.email,
       password: userData.password,
-      role: 'client',
-      phone: userData.phoneNumber || '',
-      department: '',
       joiningDate: userData.joiningDate || '',
-      age: ''
-    };
-    
-    // Save to database using the employee mutation
-    createEmployeeMutation.mutate(employeeData);
+      linkedinProfile: userData.linkedinProfile || '',
+    });
     setUserList(prev => [...prev, userData]);
     setIsAddClientCredentialsModalOpen(false);
   };
@@ -5158,15 +5143,16 @@ export default function AdminDashboard() {
           </div>
         );
       case 'user-management':
-        // Map employees from database to user table format
+        // Map employees from database to user table format (TL, TA, and Client login profiles)
+        // Exclude admin accounts (STAFFOS* IDs) from the list
         const userData = employees
-          .filter(emp => emp.role === 'recruiter' || emp.role === 'team_leader')
+          .filter(emp => (emp.role === 'recruiter' || emp.role === 'team_leader' || emp.role === 'client') && !emp.employeeId?.startsWith('STAFFOS'))
           .map(emp => ({
             id: emp.employeeId,
             dbId: emp.id,
             name: emp.name,
             email: emp.email,
-            role: emp.role === 'team_leader' ? 'Team Leader' : 'Recruiter',
+            role: emp.role === 'team_leader' ? 'Team Leader' : emp.role === 'client' ? 'Client' : 'Recruiter',
             status: emp.isActive ? 'Active' : 'Inactive',
             lastLogin: "N/A",
             phoneNumber: emp.phone || '',

@@ -18,7 +18,8 @@ import { useToast } from "@/hooks/use-toast";
 import SimpleClientHeader from '@/components/dashboard/simple-client-header';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ChatDock } from '@/components/chat/chat-dock';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { queryClient, apiRequest } from '@/lib/queryClient';
 
 interface ChatUser {
   id: number;
@@ -38,7 +39,7 @@ export default function ClientDashboard() {
   const [isJdModalOpen, setIsJdModalOpen] = useState(false);
   const [tempJdText, setTempJdText] = useState('');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [selectedCandidate, setSelectedCandidate] = useState<{name: string, stage: string} | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<{id: string, name: string, stage: string} | null>(null);
   const [candidatePopupPosition, setCandidatePopupPosition] = useState<{x: number, y: number} | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [isClosureModalOpen, setIsClosureModalOpen] = useState(false);
@@ -114,125 +115,143 @@ export default function ClientDashboard() {
     ]
   });
 
-  const firstImpactMetrics = impactMetrics[0] || impactMetrics;
+  // Fetch dashboard stats from API
+  const { data: dashboardStats } = useQuery({
+    queryKey: ['/api/client/dashboard-stats'],
+    initialData: {
+      rolesAssigned: 0,
+      totalPositions: 0,
+      activeRoles: 0,
+      successfulHires: 0,
+      pausedRoles: 0,
+      withdrawnRoles: 0
+    }
+  });
 
-  // Sample data for the dashboard
-  const dashboardStats = {
-    rolesAssigned: 15,
-    totalPositions: 6,
-    activeRoles: 5,
-    successfulHires: 3,
-    pausedRoles: 1,
-    withdrawnRoles: 1
+  // Fetch roles/requirements from API
+  const { data: allRolesData, isLoading: isLoadingRoles } = useQuery({
+    queryKey: ['/api/client/requirements'],
+    initialData: []
+  });
+
+  // Fetch pipeline data from API
+  const { data: pipelineData, isLoading: isLoadingPipeline } = useQuery({
+    queryKey: ['/api/client/pipeline'],
+    initialData: []
+  });
+
+  // Fetch closure reports from API
+  const { data: allClosureReports, isLoading: isLoadingClosures } = useQuery({
+    queryKey: ['/api/client/closures'],
+    initialData: []
+  });
+
+  // Fetch client profile from API
+  const { data: clientProfile, isLoading: isLoadingProfile } = useQuery({
+    queryKey: ['/api/client/profile'],
+    initialData: { name: '', email: '', company: 'Loading...', phone: '', profileLinked: true, clientDetails: null }
+  });
+
+  // Mutation for rejecting a candidate
+  const rejectCandidateMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const response = await apiRequest('PATCH', `/api/client/applications/${id}/status`, {
+        status: 'Rejected',
+        reason
+      });
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/client/pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/client/dashboard-stats'] });
+      toast({
+        title: "Candidate Rejected",
+        description: "The candidate has been rejected successfully.",
+      });
+      setSelectedCandidate(null);
+      setCandidatePopupPosition(null);
+      setRejectReason('');
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to reject candidate. Please try again.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Mutation for selecting/shortlisting a candidate
+  const selectCandidateMutation = useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const response = await apiRequest('PATCH', `/api/client/applications/${id}/status`, {
+        status: 'Selected'
+      });
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/client/pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/client/dashboard-stats'] });
+      toast({
+        title: "Candidate Selected",
+        description: "The candidate has been selected successfully.",
+      });
+      setSelectedCandidate(null);
+      setCandidatePopupPosition(null);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to select candidate. Please try again.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Group pipeline data by stage for the column view
+  const pipelineStages = ['L1', 'L2', 'L3', 'Final Round', 'HR Round', 'Offer Stage', 'Closure'];
+  const groupedPipeline = pipelineStages.reduce((acc, stage) => {
+    acc[stage] = (pipelineData as any[]).filter(c => c.currentStatus === stage);
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  // Calculate stage counts for sidebar
+  const stageCounts = {
+    'Sourced': (pipelineData as any[]).filter(c => c.currentStatus === 'Sourced').length,
+    'Shortlisted': (pipelineData as any[]).filter(c => c.currentStatus === 'Shortlisted').length,
+    'Intro Call': (pipelineData as any[]).filter(c => c.currentStatus === 'Intro Call').length,
+    'Assignment': (pipelineData as any[]).filter(c => c.currentStatus === 'Assignment').length,
+    'L1': groupedPipeline['L1']?.length || 0,
+    'L2': groupedPipeline['L2']?.length || 0,
+    'L3': groupedPipeline['L3']?.length || 0,
+    'Final Round': groupedPipeline['Final Round']?.length || 0,
+    'HR Round': groupedPipeline['HR Round']?.length || 0,
+    'Offer Stage': groupedPipeline['Offer Stage']?.length || 0,
+    'Closure': groupedPipeline['Closure']?.length || 0,
+    'Rejected': (pipelineData as any[]).filter(c => c.currentStatus === 'Rejected').length,
   };
 
-  // Recent chats data
-  const recentChats: ChatUser[] = [
-    {
-      id: 1,
-      name: 'Deepika',
-      requirements: 5,
-      closures: 6,
-      avatar: '/api/placeholder/40/40',
-      status: 'online'
-    },
-    {
-      id: 2,
-      name: 'Priyanka',
-      requirements: 7,
-      closures: 12,
-      avatar: '/api/placeholder/40/40',
-      status: 'online'
-    },
-    {
-      id: 3,
-      name: 'Thamarai Selvi',
-      requirements: 3,
-      closures: 7,
-      avatar: '/api/placeholder/40/40',
-      status: 'online'
+  // Stage color mapping
+  const getStageColor = (stage: string) => {
+    switch (stage) {
+      case 'L1': return { bg: 'bg-green-200', hover: 'hover:bg-green-300', text: 'text-gray-800' };
+      case 'L2': return { bg: 'bg-green-300', hover: 'hover:bg-green-400', text: 'text-gray-800' };
+      case 'L3': return { bg: 'bg-green-400', hover: 'hover:bg-green-500', text: 'text-gray-800' };
+      case 'Final Round': return { bg: 'bg-green-500', hover: 'hover:bg-green-600', text: 'text-white' };
+      case 'HR Round': return { bg: 'bg-green-600', hover: 'hover:bg-green-700', text: 'text-white' };
+      case 'Offer Stage': return { bg: 'bg-green-700', hover: 'hover:bg-green-800', text: 'text-white' };
+      case 'Closure': return { bg: 'bg-green-800', hover: 'hover:bg-green-900', text: 'text-white' };
+      default: return { bg: 'bg-gray-200', hover: 'hover:bg-gray-300', text: 'text-gray-800' };
     }
-  ];
+  };
 
-  const allRolesData = [
-    {
-      roleId: 'STCL12JD13',
-      role: 'Full Stack Engineer',
-      team: 'Arun',
-      recruiter: 'Umar',
-      sharedOn: '12-10-2025',
-      status: 'Active',
-      profilesShared: 6,
-      lastActive: '12-09-2025'
-    },
-    {
-      roleId: 'STCL12JD14',
-      role: 'Data Scientist',
-      team: 'Anusha',
-      recruiter: 'Keerthana',
-      sharedOn: '18-11-2025',
-      status: 'Paused',
-      profilesShared: 3,
-      lastActive: '14-10-2025'
-    },
-    {
-      roleId: 'STCL12JD15',
-      role: 'Frontend Developer',
-      team: 'Arun',
-      recruiter: 'Priya',
-      sharedOn: '15-11-2025',
-      status: 'Active',
-      profilesShared: 8,
-      lastActive: '16-11-2025'
-    },
-    {
-      roleId: 'STCL12JD16',
-      role: 'DevOps Engineer',
-      team: 'Anusha',
-      recruiter: 'Raj',
-      sharedOn: '20-11-2025',
-      status: 'Withdrawn',
-      profilesShared: 2,
-      lastActive: '21-11-2025'
-    },
-    {
-      roleId: 'STCL12JD17',
-      role: 'UI/UX Designer',
-      team: 'Arun',
-      recruiter: 'Maya',
-      sharedOn: '22-11-2025',
-      status: 'Active',
-      profilesShared: 4,
-      lastActive: '23-11-2025'
-    },
-    {
-      roleId: 'STCL12JD18',
-      role: 'Backend Developer',
-      team: 'Anusha',
-      recruiter: 'Kiran',
-      sharedOn: '25-11-2025',
-      status: 'Paused',
-      profilesShared: 5,
-      lastActive: '26-11-2025'
-    }
-  ];
+  const firstImpactMetrics = impactMetrics[0] || impactMetrics;
 
   // Only show top 2 roles in dashboard
-  const rolesData = allRolesData.slice(0, 2);
+  const rolesData = (allRolesData as any[]).slice(0, 2);
 
-  // Extended closure reports data for modal
-  const allClosureReports = [
-    { candidate: 'David Wilson', position: 'Frontend Developer', advisor: 'Kavitha', offered: '11-05-2023', joined: '10-10-2023' },
-    { candidate: 'Tom Anderson', position: 'UI/UX Designer', advisor: 'Rajesh', offered: '18-05-2023', joined: '12-10-2023' },
-    { candidate: 'Robert Kim', position: 'Backend Developer', advisor: 'Sowmiya', offered: '04-06-2023', joined: '25-10-2023' },
-    { candidate: 'Kevin Brown', position: 'QA Tester', advisor: 'Kalaiselvi', offered: '16-06-2023', joined: '30-10-2023' },
-    { candidate: 'Mel Gibson', position: 'Mobile App Developer', advisor: 'Malathi', offered: '08-07-2023', joined: '05-11-2023' },
-    { candidate: 'Sarah Johnson', position: 'DevOps Engineer', advisor: 'Priya', offered: '15-07-2023', joined: '10-11-2023' },
-    { candidate: 'Michael Chen', position: 'Data Analyst', advisor: 'Arun', offered: '22-07-2023', joined: '15-11-2023' },
-    { candidate: 'Emma Davis', position: 'Product Manager', advisor: 'Suresh', offered: '28-07-2023', joined: '20-11-2023' },
-    { candidate: 'James Thompson', position: 'Tech Lead', advisor: 'Deepa', offered: '05-08-2023', joined: '25-11-2023' },
-    { candidate: 'Lisa Wong', position: 'Security Engineer', advisor: 'Kumar', offered: '12-08-2023', joined: '30-11-2023' }
-  ];
+  // Recent chats data - static for now
+  const recentChats: ChatUser[] = [];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -267,7 +286,9 @@ export default function ClientDashboard() {
           <div className="h-full overflow-y-auto">
             {/* Simple Client Header */}
             <SimpleClientHeader 
-              companyName="Gumlet Marketing Private Limited"
+              companyName={(clientProfile as any)?.company || 'Loading...'}
+              clientName={(clientProfile as any)?.name || undefined}
+              clientEmail={(clientProfile as any)?.email || undefined}
               onHelpClick={() => setIsHelpChatOpen(true)}
             />
             
@@ -512,7 +533,9 @@ export default function ClientDashboard() {
           <div className="flex flex-col h-full">
             {/* Simple Client Header */}
             <SimpleClientHeader 
-              companyName="Gumlet Marketing Private Limited"
+              companyName={(clientProfile as any)?.company || 'Loading...'}
+              clientName={(clientProfile as any)?.name || undefined}
+              clientEmail={(clientProfile as any)?.email || undefined}
               onHelpClick={() => setIsHelpChatOpen(true)}
             />
             <div className="flex flex-1 overflow-hidden">
@@ -570,104 +593,33 @@ export default function ClientDashboard() {
                         </thead>
                         <tbody>
                           <tr>
-                            <td className="p-3 align-top">
-                              <div className="flex flex-col gap-2">
-                                {['Keerthana', 'Vishnu Purana', 'Chanakya', 'Adhya', 'Vanshika', 'Reyansh', 'Shaurya', 'Vihana'].map((name, index) => (
-                                  <div 
-                                    key={index}
-                                    onClick={(e) => handleCandidateClick(e, name, 'Level 1')}
-                                    className="px-3 py-2 bg-green-200 rounded text-center text-sm font-medium text-gray-800 cursor-pointer hover:bg-green-300 transition-colors relative"
-                                  >
-                                    {name}
-                                    <MoreVertical className="h-3 w-3 absolute top-1 right-1 opacity-50" />
+                            {pipelineStages.map((stage) => {
+                              const candidates = groupedPipeline[stage] || [];
+                              const colors = getStageColor(stage);
+                              return (
+                                <td key={stage} className="p-3 align-top">
+                                  <div className="flex flex-col gap-2">
+                                    {candidates.length === 0 ? (
+                                      <div className="px-3 py-2 text-center text-sm text-gray-400">
+                                        No candidates
+                                      </div>
+                                    ) : (
+                                      candidates.map((candidate: any) => (
+                                        <div 
+                                          key={candidate.id}
+                                          onClick={(e) => handleCandidateClick(e, candidate, stage)}
+                                          className={`px-3 py-2 ${colors.bg} rounded text-center text-sm font-medium ${colors.text} cursor-pointer ${colors.hover} transition-colors relative`}
+                                          data-testid={`candidate-card-${candidate.id}`}
+                                        >
+                                          {candidate.candidateName}
+                                          <MoreVertical className="h-3 w-3 absolute top-1 right-1 opacity-50" />
+                                        </div>
+                                      ))
+                                    )}
                                   </div>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="p-3 align-top">
-                              <div className="flex flex-col gap-2">
-                                {['Keerthana', 'Vishnu Purana', 'Chanakya', 'Adhya', 'Vanshika'].map((name, index) => (
-                                  <div 
-                                    key={index}
-                                    onClick={(e) => handleCandidateClick(e, name, 'Level 2')}
-                                    className="px-3 py-2 bg-green-300 rounded text-center text-sm font-medium text-gray-800 cursor-pointer hover:bg-green-400 transition-colors relative"
-                                  >
-                                    {name}
-                                    <MoreVertical className="h-3 w-3 absolute top-1 right-1 opacity-50" />
-                                  </div>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="p-3 align-top">
-                              <div className="flex flex-col gap-2">
-                                {['Keerthana', 'Vishnu Purana', 'Chanakya', 'Adhya', 'Vanshika'].map((name, index) => (
-                                  <div 
-                                    key={index}
-                                    onClick={(e) => handleCandidateClick(e, name, 'Level 3')}
-                                    className="px-3 py-2 bg-green-400 rounded text-center text-sm font-medium text-gray-800 cursor-pointer hover:bg-green-500 transition-colors relative"
-                                  >
-                                    {name}
-                                    <MoreVertical className="h-3 w-3 absolute top-1 right-1 opacity-50" />
-                                  </div>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="p-3 align-top">
-                              <div className="flex flex-col gap-2">
-                                {['Keerthana', 'Vishnu Purana', 'Chanakya', 'Adhya'].map((name, index) => (
-                                  <div 
-                                    key={index}
-                                    onClick={(e) => handleCandidateClick(e, name, 'Final Round')}
-                                    className="px-3 py-2 bg-green-500 rounded text-center text-sm font-medium text-white cursor-pointer hover:bg-green-600 transition-colors relative"
-                                  >
-                                    {name}
-                                    <MoreVertical className="h-3 w-3 absolute top-1 right-1 opacity-70" />
-                                  </div>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="p-3 align-top">
-                              <div className="flex flex-col gap-2">
-                                {['Keerthana', 'Vishnu Purana', 'Chanakya'].map((name, index) => (
-                                  <div 
-                                    key={index}
-                                    onClick={(e) => handleCandidateClick(e, name, 'HR Round')}
-                                    className="px-3 py-2 bg-green-600 rounded text-center text-sm font-medium text-white cursor-pointer hover:bg-green-700 transition-colors relative"
-                                  >
-                                    {name}
-                                    <MoreVertical className="h-3 w-3 absolute top-1 right-1 opacity-70" />
-                                  </div>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="p-3 align-top">
-                              <div className="flex flex-col gap-2">
-                                {['Keerthana', 'Vishnu Purana'].map((name, index) => (
-                                  <div 
-                                    key={index}
-                                    onClick={(e) => handleCandidateClick(e, name, 'Offer Stage')}
-                                    className="px-3 py-2 bg-green-700 rounded text-center text-sm font-medium text-white cursor-pointer hover:bg-green-800 transition-colors relative"
-                                  >
-                                    {name}
-                                    <MoreVertical className="h-3 w-3 absolute top-1 right-1 opacity-70" />
-                                  </div>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="p-3 align-top">
-                              <div className="flex flex-col gap-2">
-                                {['Keerthana', 'Vishnu Purana'].map((name, index) => (
-                                  <div 
-                                    key={index}
-                                    onClick={(e) => handleCandidateClick(e, name, 'Closure')}
-                                    className="px-3 py-2 bg-green-800 rounded text-center text-sm font-medium text-white cursor-pointer hover:bg-green-900 transition-colors relative"
-                                  >
-                                    {name}
-                                    <MoreVertical className="h-3 w-3 absolute top-1 right-1 opacity-70" />
-                                  </div>
-                                ))}
-                              </div>
-                            </td>
+                                </td>
+                              );
+                            })}
                           </tr>
                         </tbody>
                       </table>
@@ -722,21 +674,21 @@ export default function ClientDashboard() {
             <div className="w-64 bg-white border-l border-gray-200">
               <div className="p-4 space-y-1">
                 {[
-                  { label: 'SOURCED', count: 15, color: 'bg-green-100' },
-                  { label: 'SHORTLISTED', count: 9, color: 'bg-green-200' },
-                  { label: 'INTRO CALL', count: 7, color: 'bg-green-300' },
-                  { label: 'ASSIGNMENT', count: 9, color: 'bg-green-400' },
-                  { label: 'L1', count: 15, color: 'bg-green-500 text-white' },
-                  { label: 'L2', count: 9, color: 'bg-green-600 text-white' },
-                  { label: 'L3', count: 3, color: 'bg-green-700 text-white' },
-                  { label: 'FINAL ROUND', count: 9, color: 'bg-green-800 text-white' },
-                  { label: 'HR ROUND', count: 9, color: 'bg-green-900 text-white' },
-                  { label: 'OFFER STAGE', count: 9, color: 'bg-green-900 text-white' },
-                  { label: 'CLOSURE', count: 3, color: 'bg-green-950 text-white' }
+                  { label: 'SOURCED', stageKey: 'Sourced', color: 'bg-green-100' },
+                  { label: 'SHORTLISTED', stageKey: 'Shortlisted', color: 'bg-green-200' },
+                  { label: 'INTRO CALL', stageKey: 'Intro Call', color: 'bg-green-300' },
+                  { label: 'ASSIGNMENT', stageKey: 'Assignment', color: 'bg-green-400' },
+                  { label: 'L1', stageKey: 'L1', color: 'bg-green-500 text-white' },
+                  { label: 'L2', stageKey: 'L2', color: 'bg-green-600 text-white' },
+                  { label: 'L3', stageKey: 'L3', color: 'bg-green-700 text-white' },
+                  { label: 'FINAL ROUND', stageKey: 'Final Round', color: 'bg-green-800 text-white' },
+                  { label: 'HR ROUND', stageKey: 'HR Round', color: 'bg-green-900 text-white' },
+                  { label: 'OFFER STAGE', stageKey: 'Offer Stage', color: 'bg-green-900 text-white' },
+                  { label: 'CLOSURE', stageKey: 'Closure', color: 'bg-green-950 text-white' }
                 ].map((item, index) => (
                   <div key={index} className={`flex justify-between items-center py-3 px-4 rounded ${item.color}`}>
                     <span className={`text-sm font-medium ${item.color.includes('text-white') ? 'text-white' : 'text-gray-700'}`}>{item.label}</span>
-                    <span className={`text-lg font-bold ${item.color.includes('text-white') ? 'text-white' : 'text-gray-900'}`}>{item.count}</span>
+                    <span className={`text-lg font-bold ${item.color.includes('text-white') ? 'text-white' : 'text-gray-900'}`} data-testid={`count-${item.stageKey}`}>{stageCounts[item.stageKey as keyof typeof stageCounts] || 0}</span>
                   </div>
                 ))}
               </div>
@@ -751,7 +703,7 @@ export default function ClientDashboard() {
             {/* Simple Client Header */}
             <div className="print:hidden">
               <SimpleClientHeader 
-                companyName="Gumlet Marketing Private Limited"
+                companyName={(clientProfile as any)?.company || 'Loading...'}
                 onHelpClick={() => setIsHelpChatOpen(true)}
               />
             </div>
@@ -1087,14 +1039,14 @@ export default function ClientDashboard() {
     }
   };
 
-  const handleCandidateClick = (e: React.MouseEvent, name: string, stage: string) => {
+  const handleCandidateClick = (e: React.MouseEvent, candidate: any, stage: string) => {
     e.stopPropagation();
     const rect = (e.target as HTMLElement).getBoundingClientRect();
     setCandidatePopupPosition({
       x: rect.left + rect.width + 10,
       y: rect.top
     });
-    setSelectedCandidate({ name, stage });
+    setSelectedCandidate({ id: candidate.id, name: candidate.candidateName, stage });
   };
 
   const closeCandidatePopup = () => {
@@ -1176,6 +1128,37 @@ export default function ClientDashboard() {
     }, 500);
   };
 
+  // Profile not linked - show access restricted message
+  if (!isLoadingProfile && clientProfile && !(clientProfile as any).profileLinked) {
+    return (
+      <div className="flex h-screen bg-gray-100">
+        <div className="flex-1 flex items-center justify-center">
+          <Card className="max-w-md w-full mx-4">
+            <CardHeader className="text-center">
+              <div className="mx-auto mb-4 w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center">
+                <User className="w-8 h-8 text-amber-600" />
+              </div>
+              <CardTitle className="text-xl text-gray-900" data-testid="text-profile-not-linked-title">Profile Not Linked</CardTitle>
+            </CardHeader>
+            <CardContent className="text-center space-y-4">
+              <p className="text-gray-600" data-testid="text-profile-not-linked-message">
+                Your client dashboard access is pending. An administrator needs to link your account to a client profile before you can access the dashboard.
+              </p>
+              <p className="text-sm text-gray-500">
+                Please contact your administrator or wait for your account to be configured.
+              </p>
+              <div className="pt-4 border-t">
+                <p className="text-xs text-gray-400">
+                  Logged in as: {(clientProfile as any).email}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Left Sidebar - Dark Blue Theme */}
@@ -1201,6 +1184,7 @@ export default function ClientDashboard() {
             className={`p-3 rounded-lg transition-colors ${
               sidebarTab === 'requirements' ? 'bg-slate-600' : 'hover:bg-slate-600'
             }`}
+            title="Requirements"
           >
             <MapPin className="h-6 w-6 text-white" />
           </button>
@@ -1210,6 +1194,7 @@ export default function ClientDashboard() {
             className={`p-3 rounded-lg transition-colors ${
               sidebarTab === 'reports' ? 'bg-slate-600' : 'hover:bg-slate-600'
             }`}
+            title="Reports"
           >
             <HandHeart className="h-6 w-6 text-white" />
           </button>
@@ -1506,6 +1491,63 @@ export default function ClientDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Reject Candidate Confirmation Dialog */}
+      <Dialog open={selectedCandidate !== null && !candidatePopupPosition} onOpenChange={(open) => !open && setSelectedCandidate(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject Candidate</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Are you sure you want to reject <strong>{selectedCandidate?.name}</strong>?
+            </p>
+            <p className="text-xs text-gray-500">
+              Current stage: {selectedCandidate?.stage}
+            </p>
+            <div>
+              <Label htmlFor="reject-reason" className="text-sm font-medium">
+                Reason for rejection (optional)
+              </Label>
+              <Textarea
+                id="reject-reason"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Enter reason for rejection..."
+                className="mt-2"
+                data-testid="textarea-reject-reason"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSelectedCandidate(null);
+                  setRejectReason('');
+                }}
+                data-testid="button-cancel-reject"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (selectedCandidate?.id) {
+                    rejectCandidateMutation.mutate({ 
+                      id: selectedCandidate.id, 
+                      reason: rejectReason 
+                    });
+                  }
+                }}
+                disabled={rejectCandidateMutation.isPending}
+                data-testid="button-confirm-reject"
+              >
+                {rejectCandidateMutation.isPending ? 'Rejecting...' : 'Reject'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       
       {/* Candidate Action Popup */}
       {selectedCandidate && candidatePopupPosition && (
@@ -1530,27 +1572,46 @@ export default function ClientDashboard() {
             </div>
             
             <div className="space-y-3">
-              <div className="flex items-center space-x-2">
-                <input type="radio" id="reject" name="action" className="text-red-500" />
-                <label htmlFor="reject" className="text-sm text-red-600 font-medium">Reject</label>
-              </div>
+              <Button
+                variant="default"
+                className="w-full justify-start bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => {
+                  if (selectedCandidate?.id) {
+                    selectCandidateMutation.mutate({ id: selectedCandidate.id });
+                  }
+                }}
+                disabled={selectCandidateMutation.isPending}
+                data-testid="button-select-candidate"
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                {selectCandidateMutation.isPending ? 'Selecting...' : 'Select Candidate'}
+              </Button>
               
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">Detailed Final Verdict</label>
+              <div className="border-t border-gray-200 pt-3">
+                <label className="block text-xs text-gray-600 mb-1">Reject with reason:</label>
                 <Textarea
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder="Enter reason..."
+                  placeholder="Enter rejection reason..."
                   className="w-full h-16 text-xs border border-gray-300 rounded p-2 resize-none"
                 />
               </div>
               
               <div className="flex justify-end">
                 <Button 
-                  onClick={handleReject}
+                  onClick={() => {
+                    if (selectedCandidate?.id) {
+                      rejectCandidateMutation.mutate({ 
+                        id: selectedCandidate.id, 
+                        reason: rejectReason 
+                      });
+                    }
+                  }}
+                  disabled={rejectCandidateMutation.isPending}
                   className="bg-red-500 hover:bg-red-600 text-white px-4 py-1 text-sm rounded"
+                  data-testid="button-reject-popup"
                 >
-                  Submit
+                  {rejectCandidateMutation.isPending ? 'Rejecting...' : 'Reject'}
                 </Button>
               </div>
             </div>

@@ -137,6 +137,20 @@ export interface IStorage {
   updateClient(id: string, updates: Partial<Client>): Promise<Client | undefined>;
   deleteClient(id: string): Promise<boolean>;
   
+  // Client-specific data methods (for client dashboard)
+  getRequirementsByCompany(companyName: string): Promise<Requirement[]>;
+  getJobApplicationsByCompany(companyName: string): Promise<JobApplication[]>;
+  getRevenueMappingsByClientName(clientName: string): Promise<RevenueMapping[]>;
+  getClientDashboardStats(companyName: string): Promise<{
+    rolesAssigned: number;
+    totalPositions: number;
+    activeRoles: number;
+    successfulHires: number;
+    pausedRoles: number;
+    withdrawnRoles: number;
+  }>;
+  getClientPipelineData(companyName: string): Promise<any[]>;
+  
   // Impact Metrics methods
   createImpactMetrics(metrics: InsertImpactMetrics): Promise<ImpactMetrics>;
   getImpactMetrics(clientId?: string): Promise<ImpactMetrics | undefined>;
@@ -1370,6 +1384,50 @@ export class MemStorage implements IStorage {
 
   async deleteClient(id: string): Promise<boolean> {
     throw new Error("Client methods not implemented in MemStorage. Use DatabaseStorage.");
+  }
+
+  // Client-specific data methods (for client dashboard)
+  async getRequirementsByCompany(companyName: string): Promise<Requirement[]> {
+    return Array.from(this.requirements.values()).filter(r => 
+      r.company.toLowerCase() === companyName.toLowerCase()
+    );
+  }
+
+  async getJobApplicationsByCompany(companyName: string): Promise<JobApplication[]> {
+    return Array.from(this.jobApplications.values()).filter(app => 
+      app.company.toLowerCase() === companyName.toLowerCase()
+    );
+  }
+
+  async getRevenueMappingsByClientName(clientName: string): Promise<RevenueMapping[]> {
+    throw new Error("Revenue Mapping methods not implemented in MemStorage. Use DatabaseStorage.");
+  }
+
+  async getClientDashboardStats(companyName: string): Promise<{
+    rolesAssigned: number;
+    totalPositions: number;
+    activeRoles: number;
+    successfulHires: number;
+    pausedRoles: number;
+    withdrawnRoles: number;
+  }> {
+    const requirements = await this.getRequirementsByCompany(companyName);
+    const activeRoles = requirements.filter(r => r.status === 'open' || r.status === 'in_progress').length;
+    const completedRoles = requirements.filter(r => r.status === 'completed').length;
+    
+    return {
+      rolesAssigned: requirements.length,
+      totalPositions: requirements.length,
+      activeRoles,
+      successfulHires: completedRoles,
+      pausedRoles: 0,
+      withdrawnRoles: 0
+    };
+  }
+
+  async getClientPipelineData(companyName: string): Promise<any[]> {
+    const applications = await this.getJobApplicationsByCompany(companyName);
+    return applications;
   }
 
   // Impact Metrics methods (stub - not implemented in MemStorage)

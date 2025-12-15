@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Briefcase,
   MapPin,
@@ -19,6 +19,7 @@ import {
   DollarSign,
   Calendar,
   Building,
+  Loader2,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -34,179 +35,208 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const mockCandidates = [
-  {
-    id: 1,
-    name: "Sarah Johnson",
-    title: "Senior Full Stack Developer",
-    location: "Mumbai, Maharashtra",
-    experience: 5.5,
-    education: "B.Tech Computer Science",
-    currentCompany: "Tech Solutions Inc.",
-    lastActive: "2 days ago",
-    skills: ["React", "Node.js", "Python", "AWS", "MongoDB"],
-    summary:
-      "Experienced full-stack developer with expertise in modern web technologies and cloud platforms.",
-    resumeUrl: "#",
-    profilePic: "",
-    noticePeriod: "30 days",
-    ctc: "₹32L",
-    expectedCtc: "₹38L",
-    email: "sarah.johnson@email.com",
-    phone: "+91 9876543210",
+interface ComboInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  suggestions: string[];
+  placeholder: string;
+  label?: string;
+  icon?: React.ReactNode;
+  testId?: string;
+}
+
+function ComboInput({ value, onChange, suggestions, placeholder, label, icon, testId }: ComboInputProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [inputValue, setInputValue] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        dropdownRef.current && 
+        !dropdownRef.current.contains(event.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredSuggestions = suggestions.filter(s => 
+    s.toLowerCase().includes(inputValue.toLowerCase())
+  );
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setInputValue(newValue);
+    onChange(newValue);
+    setIsOpen(true);
+  };
+
+  const handleSuggestionClick = (suggestion: string) => {
+    setInputValue(suggestion);
+    onChange(suggestion);
+    setIsOpen(false);
+  };
+
+  const handleClear = () => {
+    setInputValue("");
+    onChange("");
+  };
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 pr-8 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+          placeholder={placeholder}
+          value={inputValue}
+          onChange={handleInputChange}
+          onFocus={() => setIsOpen(true)}
+          data-testid={testId}
+        />
+        {inputValue && (
+          <button
+            type="button"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            onClick={handleClear}
+          >
+            <X size={16} />
+          </button>
+        )}
+      </div>
+      {isOpen && filteredSuggestions.length > 0 && (
+        <div
+          ref={dropdownRef}
+          className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+        >
+          {filteredSuggestions.map((suggestion, index) => (
+            <button
+              key={index}
+              type="button"
+              className="w-full text-left px-3 py-2 hover:bg-purple-50 text-sm transition-colors"
+              onClick={() => handleSuggestionClick(suggestion)}
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface DatabaseCandidate {
+  id: string;
+  candidateId: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  company?: string;
+  designation?: string;
+  location?: string;
+  experience?: string;
+  skills?: string;
+  profilePicture?: string;
+  education?: string;
+  currentRole?: string;
+  ctc?: string;
+  ectc?: string;
+  noticePeriod?: string;
+  position?: string;
+  pedigreeLevel?: string;
+  companyLevel?: string;
+  companySector?: string;
+  productService?: string;
+  productCategory?: string;
+  productDomain?: string;
+  employmentType?: string;
+  createdAt: string;
+}
+
+interface CandidateDisplay {
+  id: string;
+  name: string;
+  title: string;
+  location: string;
+  experience: number;
+  education: string;
+  currentCompany: string;
+  lastActive: string;
+  skills: string[];
+  summary: string;
+  resumeUrl: string;
+  profilePic: string;
+  noticePeriod: string;
+  ctc: string;
+  expectedCtc: string;
+  email: string;
+  phone: string;
+  saved: boolean;
+  pedigreeLevel: string;
+  companyLevel: string;
+  companySector: string;
+  productService: string;
+  productCategory: string;
+  productDomain: string;
+  employmentType: string;
+  availability: string;
+}
+
+function mapDatabaseCandidateToDisplay(dbCandidate: DatabaseCandidate): CandidateDisplay {
+  const skillsArray = dbCandidate.skills 
+    ? dbCandidate.skills.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+  
+  const experienceNum = dbCandidate.experience 
+    ? parseFloat(dbCandidate.experience.replace(/[^\d.]/g, '')) || 0
+    : 0;
+  
+  const createdDate = new Date(dbCandidate.createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - createdDate.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const lastActive = diffDays === 0 ? 'Today' : diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
+
+  return {
+    id: dbCandidate.id,
+    name: dbCandidate.fullName,
+    title: dbCandidate.designation || dbCandidate.currentRole || dbCandidate.position || 'Not specified',
+    location: dbCandidate.location || 'Not specified',
+    experience: experienceNum,
+    education: dbCandidate.education || 'Not specified',
+    currentCompany: dbCandidate.company || 'Not specified',
+    lastActive,
+    skills: skillsArray,
+    summary: `Candidate profile for ${dbCandidate.fullName}`,
+    resumeUrl: '#',
+    profilePic: dbCandidate.profilePicture || '',
+    noticePeriod: dbCandidate.noticePeriod || 'Not specified',
+    ctc: dbCandidate.ctc || 'Not specified',
+    expectedCtc: dbCandidate.ectc || 'Not specified',
+    email: dbCandidate.email,
+    phone: dbCandidate.phone || '',
     saved: false,
-    pedigreeLevel: "Tier 2",
-    companyLevel: "Mid-size",
-    companySector: "Technology",
-    productService: "SaaS",
-    productCategory: "B2B",
-    productDomain: "Web Development",
-    employmentType: "Full-time",
-    availability: "Immediate",
-  },
-  {
-    id: 2,
-    name: "Priya Menon",
-    title: "Backend Developer",
-    location: "Remote",
-    experience: 5,
-    education: "MCA, Anna University",
-    currentCompany: "Freshworks",
-    lastActive: "5 hours ago",
-    skills: ["Node.js", "Express", "MongoDB", "AWS", "Docker", "Redis"],
-    summary:
-      "Backend developer with strong cloud and microservices experience.",
-    resumeUrl: "#",
-    profilePic: "https://randomuser.me/api/portraits/women/44.jpg",
-    noticePeriod: "Immediate",
-    ctc: "₹24L",
-    expectedCtc: "₹28L",
-    email: "priya.menon@email.com",
-    phone: "+91 9988776655",
-    saved: true,
-    pedigreeLevel: "Tier 1",
-    companyLevel: "Enterprise",
-    companySector: "Technology",
-    productService: "Product",
-    productCategory: "B2B",
-    productDomain: "Cloud Computing",
-    employmentType: "Full-time",
-    availability: "Immediate",
-  },
-  {
-    id: 3,
-    name: "Amit Sharma",
-    title: "Frontend Engineer",
-    location: "Bangalore, India",
-    experience: 4,
-    education: "B.E. Computer Science",
-    currentCompany: "Flipkart",
-    lastActive: "1 day ago",
-    skills: ["React", "Redux", "TypeScript", "HTML", "CSS"],
-    summary:
-      "Frontend specialist with 4 years experience in e-commerce and SaaS.",
-    resumeUrl: "#",
-    profilePic: "",
-    noticePeriod: "15 days",
-    ctc: "₹18L",
-    expectedCtc: "₹22L",
-    email: "amit.sharma@email.com",
-    phone: "+91 9876543211",
-    saved: false,
-    pedigreeLevel: "Tier 2",
-    companyLevel: "MNC",
-    companySector: "E-commerce",
-    productService: "Product",
-    productCategory: "B2C",
-    productDomain: "Web Development",
-    employmentType: "Full-time",
-    availability: "15 days",
-  },
-  {
-    id: 4,
-    name: "Ravi Kumar",
-    title: "DevOps Engineer",
-    location: "Chennai, India",
-    experience: 6,
-    education: "B.Tech IT",
-    currentCompany: "Amazon",
-    lastActive: "3 days ago",
-    skills: ["AWS", "Docker", "Kubernetes", "Linux", "Python"],
-    summary: "DevOps engineer with strong cloud and automation background.",
-    resumeUrl: "#",
-    profilePic: "",
-    noticePeriod: "60 days",
-    ctc: "₹28L",
-    expectedCtc: "₹32L",
-    email: "ravi.kumar@email.com",
-    phone: "+91 9876543212",
-    saved: false,
-    pedigreeLevel: "Tier 1",
-    companyLevel: "MNC",
-    companySector: "E-commerce",
-    productService: "Hybrid",
-    productCategory: "B2C",
-    productDomain: "Cloud Computing",
-    employmentType: "Full-time",
-    availability: "60 days",
-  },
-  {
-    id: 5,
-    name: "Meena S",
-    title: "Full Stack Developer",
-    location: "Remote",
-    experience: 3.5,
-    education: "M.Sc. Computer Science",
-    currentCompany: "Google",
-    lastActive: "6 hours ago",
-    skills: ["Node.js", "React", "MongoDB", "Express", "AWS"],
-    summary: "Full stack developer with a passion for scalable web apps.",
-    resumeUrl: "#",
-    profilePic: "",
-    noticePeriod: "Immediate",
-    ctc: "₹20L",
-    expectedCtc: "₹25L",
-    email: "meena.s@email.com",
-    phone: "+91 9876543213",
-    saved: true,
-    pedigreeLevel: "Tier 1",
-    companyLevel: "MNC",
-    companySector: "Technology",
-    productService: "SaaS",
-    productCategory: "B2B",
-    productDomain: "AI/ML",
-    employmentType: "Full-time",
-    availability: "Immediate",
-  },
-  {
-    id: 6,
-    name: "Tom Victor",
-    title: "Backend Developer",
-    location: "Bangalore, India",
-    experience: 2,
-    education: "BCA",
-    currentCompany: "Infosys",
-    lastActive: "4 days ago",
-    skills: ["Node.js", "Express", "MongoDB", "Docker"],
-    summary: "Backend developer with a focus on Node.js and microservices.",
-    resumeUrl: "#",
-    profilePic: "",
-    noticePeriod: "30 days",
-    ctc: "₹10L",
-    expectedCtc: "₹13L",
-    email: "tom.victor@email.com",
-    phone: "+91 9876543214",
-    saved: false,
-    pedigreeLevel: "Tier 3",
-    companyLevel: "Enterprise",
-    companySector: "Consulting",
-    productService: "Service",
-    productCategory: "B2B2C",
-    productDomain: "Web Development",
-    employmentType: "Contract",
-    availability: "30 days",
-  },
-];
+    pedigreeLevel: dbCandidate.pedigreeLevel || '',
+    companyLevel: dbCandidate.companyLevel || '',
+    companySector: dbCandidate.companySector || '',
+    productService: dbCandidate.productService || '',
+    productCategory: dbCandidate.productCategory || '',
+    productDomain: dbCandidate.productDomain || '',
+    employmentType: dbCandidate.employmentType || '',
+    availability: dbCandidate.noticePeriod || 'Not specified',
+  };
+}
 
 const allSkills = [
   "React",
@@ -301,11 +331,11 @@ const SourceResume = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [booleanMode, setBooleanMode] = useState(false);
   const [filters, setFilters] = useState(initialFilters);
-  const [candidates, setCandidates] = useState(mockCandidates);
-  const [selectedCandidate, setSelectedCandidate] = useState(mockCandidates[0]);
+  const [candidates, setCandidates] = useState<CandidateDisplay[]>([]);
+  const [selectedCandidate, setSelectedCandidate] = useState<CandidateDisplay | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sidebarView, setSidebarView] = useState("all");
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBulkDropdown, setShowBulkDropdown] = useState(false);
   const [showDeliverModal, setShowDeliverModal] = useState(false);
   const [selectedRequirement, setSelectedRequirement] = useState("");
@@ -315,6 +345,38 @@ const SourceResume = () => {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Fetch candidates from the database
+  const { data: dbCandidates = [], isLoading: isLoadingCandidates, isError: isErrorCandidates } = useQuery<DatabaseCandidate[]>({
+    queryKey: ['/api/admin/candidates'],
+  });
+
+  // Map database candidates to display format and update state
+  useEffect(() => {
+    const mappedCandidates = dbCandidates.map(mapDatabaseCandidateToDisplay);
+    setCandidates(mappedCandidates);
+    // Reset pagination when data changes
+    setCurrentPage(1);
+    if (mappedCandidates.length > 0) {
+      if (!selectedCandidate || !mappedCandidates.find(c => c.id === selectedCandidate.id)) {
+        setSelectedCandidate(mappedCandidates[0]);
+      }
+    } else {
+      setSelectedCandidate(null);
+    }
+  }, [dbCandidates]);
+
+  // Derive unique values from candidates for filter suggestions
+  const uniqueLocations = Array.from(new Set(candidates.map(c => c.location).filter(Boolean)));
+  const uniqueRoles = Array.from(new Set(candidates.map(c => c.title).filter(Boolean)));
+  const uniqueCompanies = Array.from(new Set(candidates.map(c => c.currentCompany).filter(Boolean)));
+  const uniqueCompanyLevels = Array.from(new Set(candidates.map(c => c.companyLevel).filter(Boolean)));
+  const uniqueProductDomains = Array.from(new Set(candidates.map(c => c.productDomain).filter(Boolean)));
+  const uniqueEmploymentTypes = Array.from(new Set(candidates.map(c => c.employmentType).filter(Boolean)));
+  const uniquePedigreeLevels = Array.from(new Set(candidates.map(c => c.pedigreeLevel).filter(Boolean)));
+  const uniqueCompanySectors = Array.from(new Set(candidates.map(c => c.companySector).filter(Boolean)));
+  const uniqueProductServices = Array.from(new Set(candidates.map(c => c.productService).filter(Boolean)));
+  const uniqueProductCategories = Array.from(new Set(candidates.map(c => c.productCategory).filter(Boolean)));
 
   // Fetch only requirements assigned to this recruiter (not all admin requirements)
   const { data: requirements = [], isLoading: isLoadingRequirements, isError: isErrorRequirements } = useQuery({
@@ -379,7 +441,13 @@ const SourceResume = () => {
     setFilters(initialFilters);
     setSearchQuery("");
     setBooleanMode(false);
+    setCurrentPage(1);
   };
+
+  // Reset pagination when filters, search, or sidebar view change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters, searchQuery, sidebarView]);
 
   // Filtering logic
   const filterCandidates = () => {
@@ -427,7 +495,7 @@ const SourceResume = () => {
           return false;
         }
       }
-      if (filters.location && c.location !== filters.location) return false;
+      if (filters.location && !c.location.toLowerCase().includes(filters.location.toLowerCase())) return false;
       if (
         c.experience < filters.experience[0] ||
         c.experience > filters.experience[1]
@@ -435,20 +503,20 @@ const SourceResume = () => {
         return false;
       if (
         filters.skills.length > 0 &&
-        !filters.skills.every((s) => c.skills.includes(s))
+        !filters.skills.every((s) => c.skills.some(cs => cs.toLowerCase().includes(s.toLowerCase())))
       )
         return false;
-      if (filters.role && c.title !== filters.role) return false;
-      if (filters.company && c.currentCompany !== filters.company) return false;
-      if (filters.pedigreeLevel && c.pedigreeLevel !== filters.pedigreeLevel) return false;
-      if (filters.companyLevel && c.companyLevel !== filters.companyLevel) return false;
-      if (filters.companySector && c.companySector !== filters.companySector) return false;
-      if (filters.productService && c.productService !== filters.productService) return false;
-      if (filters.productCategory && c.productCategory !== filters.productCategory) return false;
-      if (filters.productDomain && c.productDomain !== filters.productDomain) return false;
-      if (filters.employmentType && c.employmentType !== filters.employmentType) return false;
-      if (filters.noticePeriod && c.noticePeriod !== filters.noticePeriod) return false;
-      if (filters.availability && c.availability !== filters.availability) return false;
+      if (filters.role && !c.title.toLowerCase().includes(filters.role.toLowerCase())) return false;
+      if (filters.company && !c.currentCompany.toLowerCase().includes(filters.company.toLowerCase())) return false;
+      if (filters.pedigreeLevel && c.pedigreeLevel && !c.pedigreeLevel.toLowerCase().includes(filters.pedigreeLevel.toLowerCase())) return false;
+      if (filters.companyLevel && !c.companyLevel.toLowerCase().includes(filters.companyLevel.toLowerCase())) return false;
+      if (filters.companySector && c.companySector && !c.companySector.toLowerCase().includes(filters.companySector.toLowerCase())) return false;
+      if (filters.productService && c.productService && !c.productService.toLowerCase().includes(filters.productService.toLowerCase())) return false;
+      if (filters.productCategory && c.productCategory && !c.productCategory.toLowerCase().includes(filters.productCategory.toLowerCase())) return false;
+      if (filters.productDomain && !c.productDomain.toLowerCase().includes(filters.productDomain.toLowerCase())) return false;
+      if (filters.employmentType && !c.employmentType.toLowerCase().includes(filters.employmentType.toLowerCase())) return false;
+      if (filters.noticePeriod && c.noticePeriod && !c.noticePeriod.toLowerCase().includes(filters.noticePeriod.toLowerCase())) return false;
+      if (filters.availability && c.availability && !c.availability.toLowerCase().includes(filters.availability.toLowerCase())) return false;
       if (filters.ctcMin && parseInt(c.ctc.replace(/[^\d]/g, '')) < parseInt(filters.ctcMin)) return false;
       if (filters.ctcMax && parseInt(c.ctc.replace(/[^\d]/g, '')) > parseInt(filters.ctcMax)) return false;
       return true;
@@ -456,7 +524,16 @@ const SourceResume = () => {
   };
 
   const filteredCandidates = filterCandidates();
-  const totalPages = Math.ceil(filteredCandidates.length / resultsPerPage);
+  const totalPages = Math.ceil(filteredCandidates.length / resultsPerPage) || 1;
+  
+  // Clamp currentPage to valid range whenever filtered results change
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filteredCandidates.length / resultsPerPage));
+    if (currentPage > maxPage) {
+      setCurrentPage(maxPage);
+    }
+  }, [filteredCandidates.length, currentPage, resultsPerPage]);
+  
   const paginatedCandidates = filteredCandidates.slice(
     (currentPage - 1) * resultsPerPage,
     currentPage * resultsPerPage
@@ -474,15 +551,15 @@ const SourceResume = () => {
       skills: filters.skills.filter((s) => s !== skill),
     });
   };
-  const handleSaveCandidate = (id: number) => {
+  const handleSaveCandidate = (id: string) => {
     setCandidates((prev) =>
       prev.map((c) => (c.id === id ? { ...c, saved: !c.saved } : c))
     );
     if (selectedCandidate && selectedCandidate.id === id) {
-      setSelectedCandidate((prev) => ({ ...prev, saved: !prev.saved }));
+      setSelectedCandidate((prev) => prev ? { ...prev, saved: !prev.saved } : null);
     }
   };
-  const handleSelectCandidate = (id: number) => {
+  const handleSelectCandidate = (id: string) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
     );
@@ -551,7 +628,11 @@ const SourceResume = () => {
               <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
                 Source Resume
               </h2>
-              <p className="text-gray-600 mt-1">Find the perfect candidates for your requirements</p>
+              <p className="text-gray-600 mt-1">
+                {isLoadingCandidates 
+                  ? "Loading candidates..." 
+                  : `Find the perfect candidates from ${candidates.length} profiles`}
+              </p>
             </div>
             <button
               onClick={resetFilters}
@@ -601,21 +682,13 @@ const SourceResume = () => {
                 <MapPin size={16} className="text-purple-600" />
                 Location
               </label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+              <ComboInput
                 value={filters.location}
-                onChange={(e) =>
-                  setFilters({ ...filters, location: e.target.value })
-                }
-                data-testid="select-location"
-              >
-                <option value="">All Locations</option>
-                {allLocations.map((loc) => (
-                  <option key={loc} value={loc}>
-                    {loc}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, location: value })}
+                suggestions={[...allLocations, ...uniqueLocations]}
+                placeholder="Type or select location..."
+                testId="input-location"
+              />
             </div>
 
             {/* Role */}
@@ -624,21 +697,13 @@ const SourceResume = () => {
                 <Briefcase size={16} className="text-purple-600" />
                 Role
               </label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+              <ComboInput
                 value={filters.role}
-                onChange={(e) =>
-                  setFilters({ ...filters, role: e.target.value })
-                }
-                data-testid="select-role"
-              >
-                <option value="">All Roles</option>
-                {allRoles.map((role) => (
-                  <option key={role} value={role}>
-                    {role}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, role: value })}
+                suggestions={[...allRoles, ...uniqueRoles]}
+                placeholder="Type or select role..."
+                testId="input-role"
+              />
             </div>
 
             {/* Notice Period */}
@@ -647,21 +712,13 @@ const SourceResume = () => {
                 <Calendar size={16} className="text-purple-600" />
                 Notice Period
               </label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+              <ComboInput
                 value={filters.noticePeriod}
-                onChange={(e) =>
-                  setFilters({ ...filters, noticePeriod: e.target.value })
-                }
-                data-testid="select-notice-period"
-              >
-                <option value="">Any</option>
-                {allNoticePeriods.map((period) => (
-                  <option key={period} value={period}>
-                    {period}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, noticePeriod: value })}
+                suggestions={allNoticePeriods}
+                placeholder="Type or select notice period..."
+                testId="input-notice-period"
+              />
             </div>
 
             {/* Experience Range */}
@@ -746,21 +803,13 @@ const SourceResume = () => {
                 <Clock size={16} className="text-purple-600" />
                 Availability
               </label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+              <ComboInput
                 value={filters.availability}
-                onChange={(e) =>
-                  setFilters({ ...filters, availability: e.target.value })
-                }
-                data-testid="select-availability"
-              >
-                <option value="">Any</option>
-                {allAvailability.map((avail) => (
-                  <option key={avail} value={avail}>
-                    {avail}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, availability: value })}
+                suggestions={allAvailability}
+                placeholder="Type or select availability..."
+                testId="input-availability"
+              />
             </div>
 
             {/* Skills */}
@@ -819,154 +868,90 @@ const SourceResume = () => {
                 <Building size={16} className="text-purple-600" />
                 Company
               </label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              <ComboInput
                 value={filters.company}
-                onChange={(e) =>
-                  setFilters({ ...filters, company: e.target.value })
-                }
-                data-testid="select-company"
-              >
-                <option value="">Any Company</option>
-                {allCompanies.map((company) => (
-                  <option key={company} value={company}>
-                    {company}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, company: value })}
+                suggestions={[...allCompanies, ...uniqueCompanies]}
+                placeholder="Type or select company..."
+                testId="input-company"
+              />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-700">Pedigree Level</label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              <ComboInput
                 value={filters.pedigreeLevel}
-                onChange={(e) =>
-                  setFilters({ ...filters, pedigreeLevel: e.target.value })
-                }
-                data-testid="select-pedigree"
-              >
-                <option value="">Any</option>
-                {allPedigreeLevels.map((level) => (
-                  <option key={level} value={level}>
-                    {level}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, pedigreeLevel: value })}
+                suggestions={[...allPedigreeLevels, ...uniquePedigreeLevels]}
+                placeholder="Type or select pedigree level..."
+                testId="input-pedigree"
+              />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-700">Company Level</label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              <ComboInput
                 value={filters.companyLevel}
-                onChange={(e) =>
-                  setFilters({ ...filters, companyLevel: e.target.value })
-                }
-                data-testid="select-company-level"
-              >
-                <option value="">Any</option>
-                {allCompanyLevels.map((level) => (
-                  <option key={level} value={level}>
-                    {level}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, companyLevel: value })}
+                suggestions={allCompanyLevels}
+                placeholder="Type or select company level..."
+                testId="input-company-level"
+              />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-700">Company Sector</label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              <ComboInput
                 value={filters.companySector}
-                onChange={(e) =>
-                  setFilters({ ...filters, companySector: e.target.value })
-                }
-                data-testid="select-company-sector"
-              >
-                <option value="">Any</option>
-                {allCompanySectors.map((sector) => (
-                  <option key={sector} value={sector}>
-                    {sector}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, companySector: value })}
+                suggestions={[...allCompanySectors, ...uniqueCompanySectors]}
+                placeholder="Type or select company sector..."
+                testId="input-company-sector"
+              />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-700">Product/Service</label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              <ComboInput
                 value={filters.productService}
-                onChange={(e) =>
-                  setFilters({ ...filters, productService: e.target.value })
-                }
-                data-testid="select-product-service"
-              >
-                <option value="">Any</option>
-                {allProductServices.map((service) => (
-                  <option key={service} value={service}>
-                    {service}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, productService: value })}
+                suggestions={[...allProductServices, ...uniqueProductServices]}
+                placeholder="Type or select product/service..."
+                testId="input-product-service"
+              />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-700">Product Category</label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              <ComboInput
                 value={filters.productCategory}
-                onChange={(e) =>
-                  setFilters({ ...filters, productCategory: e.target.value })
-                }
-                data-testid="select-product-category"
-              >
-                <option value="">Any</option>
-                {allProductCategories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, productCategory: value })}
+                suggestions={[...allProductCategories, ...uniqueProductCategories]}
+                placeholder="Type or select product category..."
+                testId="input-product-category"
+              />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-700">Product Domain</label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              <ComboInput
                 value={filters.productDomain}
-                onChange={(e) =>
-                  setFilters({ ...filters, productDomain: e.target.value })
-                }
-                data-testid="select-product-domain"
-              >
-                <option value="">Any</option>
-                {allProductDomains.map((domain) => (
-                  <option key={domain} value={domain}>
-                    {domain}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, productDomain: value })}
+                suggestions={allProductDomains}
+                placeholder="Type or select product domain..."
+                testId="input-product-domain"
+              />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-700">Employment Type</label>
-              <select
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              <ComboInput
                 value={filters.employmentType}
-                onChange={(e) =>
-                  setFilters({ ...filters, employmentType: e.target.value })
-                }
-                data-testid="select-employment-type"
-              >
-                <option value="">Any</option>
-                {allEmploymentTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFilters({ ...filters, employmentType: value })}
+                suggestions={allEmploymentTypes}
+                placeholder="Type or select employment type..."
+                testId="input-employment-type"
+              />
             </div>
           </div>
         </div>
@@ -1053,21 +1038,13 @@ const SourceResume = () => {
 
           <div>
             <label className="block text-base font-medium mb-1">Location</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-base"
+            <ComboInput
               value={filters.location}
-              onChange={(e) =>
-                setFilters({ ...filters, location: e.target.value })
-              }
-              data-testid="select-location-sidebar"
-            >
-              <option value="">Any</option>
-              {allLocations.map((loc) => (
-                <option key={loc} value={loc}>
-                  {loc}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setFilters({ ...filters, location: value })}
+              suggestions={[...allLocations, ...uniqueLocations]}
+              placeholder="Type or select location..."
+              testId="input-location-sidebar"
+            />
           </div>
 
           <div>
@@ -1218,146 +1195,90 @@ const SourceResume = () => {
 
           <div>
             <label className="block text-base font-medium mb-1">Role</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-base"
+            <ComboInput
               value={filters.role}
-              onChange={(e) =>
-                setFilters({ ...filters, role: e.target.value })
-              }
-            >
-              <option value="">Any</option>
-              {allRoles.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setFilters({ ...filters, role: value })}
+              suggestions={[...allRoles, ...uniqueRoles]}
+              placeholder="Type or select role..."
+              testId="input-role-sidebar"
+            />
           </div>
 
           <div>
             <label className="block text-base font-medium mb-1">Pedigree Level</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-base"
+            <ComboInput
               value={filters.pedigreeLevel}
-              onChange={(e) =>
-                setFilters({ ...filters, pedigreeLevel: e.target.value })
-              }
-            >
-              <option value="">Any</option>
-              {allPedigreeLevels.map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setFilters({ ...filters, pedigreeLevel: value })}
+              suggestions={Array.from(new Set([...allPedigreeLevels, ...uniquePedigreeLevels]))}
+              placeholder="Type or select pedigree level..."
+              testId="input-pedigree-sidebar"
+            />
           </div>
 
           <div>
             <label className="block text-base font-medium mb-1">Company Level</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-base"
+            <ComboInput
               value={filters.companyLevel}
-              onChange={(e) =>
-                setFilters({ ...filters, companyLevel: e.target.value })
-              }
-            >
-              <option value="">Any</option>
-              {allCompanyLevels.map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setFilters({ ...filters, companyLevel: value })}
+              suggestions={Array.from(new Set([...allCompanyLevels, ...uniqueCompanyLevels]))}
+              placeholder="Type or select company level..."
+              testId="input-company-level-sidebar"
+            />
           </div>
 
           <div>
             <label className="block text-base font-medium mb-1">Company Sector</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-base"
+            <ComboInput
               value={filters.companySector}
-              onChange={(e) =>
-                setFilters({ ...filters, companySector: e.target.value })
-              }
-            >
-              <option value="">Any</option>
-              {allCompanySectors.map((sector) => (
-                <option key={sector} value={sector}>
-                  {sector}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setFilters({ ...filters, companySector: value })}
+              suggestions={Array.from(new Set([...allCompanySectors, ...uniqueCompanySectors]))}
+              placeholder="Type or select company sector..."
+              testId="input-company-sector-sidebar"
+            />
           </div>
 
           <div>
             <label className="block text-base font-medium mb-1">Product/Service</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-base"
+            <ComboInput
               value={filters.productService}
-              onChange={(e) =>
-                setFilters({ ...filters, productService: e.target.value })
-              }
-            >
-              <option value="">Any</option>
-              {allProductServices.map((service) => (
-                <option key={service} value={service}>
-                  {service}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setFilters({ ...filters, productService: value })}
+              suggestions={Array.from(new Set([...allProductServices, ...uniqueProductServices]))}
+              placeholder="Type or select product/service..."
+              testId="input-product-service-sidebar"
+            />
           </div>
 
           <div>
             <label className="block text-base font-medium mb-1">Product Category</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-base"
+            <ComboInput
               value={filters.productCategory}
-              onChange={(e) =>
-                setFilters({ ...filters, productCategory: e.target.value })
-              }
-            >
-              <option value="">Any</option>
-              {allProductCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setFilters({ ...filters, productCategory: value })}
+              suggestions={Array.from(new Set([...allProductCategories, ...uniqueProductCategories]))}
+              placeholder="Type or select product category..."
+              testId="input-product-category-sidebar"
+            />
           </div>
 
           <div>
             <label className="block text-base font-medium mb-1">Product Domain</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-base"
+            <ComboInput
               value={filters.productDomain}
-              onChange={(e) =>
-                setFilters({ ...filters, productDomain: e.target.value })
-              }
-            >
-              <option value="">Any</option>
-              {allProductDomains.map((domain) => (
-                <option key={domain} value={domain}>
-                  {domain}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setFilters({ ...filters, productDomain: value })}
+              suggestions={Array.from(new Set([...allProductDomains, ...uniqueProductDomains]))}
+              placeholder="Type or select product domain..."
+              testId="input-product-domain-sidebar"
+            />
           </div>
 
           <div>
             <label className="block text-base font-medium mb-1">Employment Type</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-base"
+            <ComboInput
               value={filters.employmentType}
-              onChange={(e) =>
-                setFilters({ ...filters, employmentType: e.target.value })
-              }
-            >
-              <option value="">Any</option>
-              {allEmploymentTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setFilters({ ...filters, employmentType: value })}
+              suggestions={Array.from(new Set([...allEmploymentTypes, ...uniqueEmploymentTypes]))}
+              placeholder="Type or select employment type..."
+              testId="input-employment-type-sidebar"
+            />
           </div>
         </div>
       </aside>
@@ -1423,6 +1344,52 @@ const SourceResume = () => {
 
         {/* Profiles List - Scrollable */}
         <div className="flex-1 overflow-y-auto p-4">
+          {/* Loading State */}
+          {isLoadingCandidates && (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+              <Loader2 className="w-8 h-8 animate-spin mb-4 text-purple-600" />
+              <p>Loading candidates...</p>
+            </div>
+          )}
+          
+          {/* Error State */}
+          {isErrorCandidates && !isLoadingCandidates && (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                <p className="text-red-600 font-medium">Failed to load candidates</p>
+                <p className="text-red-500 text-sm mt-1">Please try refreshing the page</p>
+              </div>
+            </div>
+          )}
+          
+          {/* Empty State */}
+          {!isLoadingCandidates && !isErrorCandidates && candidates.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
+                <p className="font-medium">No candidates found</p>
+                <p className="text-sm mt-1">Add candidates through Master Database or candidate registrations</p>
+              </div>
+            </div>
+          )}
+          
+          {/* No Results State */}
+          {!isLoadingCandidates && !isErrorCandidates && candidates.length > 0 && filteredCandidates.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+                <p className="text-yellow-700 font-medium">No matches found</p>
+                <p className="text-yellow-600 text-sm mt-1">Try adjusting your filters or search criteria</p>
+                <button
+                  onClick={resetFilters}
+                  className="mt-3 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700"
+                >
+                  Reset Filters
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* Candidates List - Only show when we have candidates on this page */}
+          {!isLoadingCandidates && !isErrorCandidates && paginatedCandidates.length > 0 && (
           <div className="space-y-4">
             {paginatedCandidates.map((candidate) => (
               <div
@@ -1543,6 +1510,7 @@ const SourceResume = () => {
               </div>
             ))}
           </div>
+          )}
         </div>
       </main>
 

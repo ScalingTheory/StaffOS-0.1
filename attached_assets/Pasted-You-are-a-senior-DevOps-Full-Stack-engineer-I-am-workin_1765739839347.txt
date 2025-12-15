@@ -1,0 +1,146 @@
+You are a senior DevOps + Full-Stack engineer.
+I am working on an organization GitHub repository and need this project prepared for professional production deployment.
+
+📌 PROJECT CONTEXT
+
+GitHub Org Repo: ScalingTheory/StaffOS-0.1
+
+Branch strategy:
+
+main → Production (LIVE)
+
+dev → Development / staging
+
+Developers actively work on dev
+
+main must remain stable and power the live website
+
+🚀 DEPLOYMENT STACK (MANDATORY)
+
+Frontend → Vercel
+
+Backend → Render
+
+Database → Neon (PostgreSQL)
+
+🎯 GOALS
+
+Prepare the codebase so it is ready to deploy on:
+
+Vercel (frontend)
+
+Render (backend)
+
+Ensure dev and prod environments are completely isolated
+
+Separate backend services
+
+Separate Neon databases
+
+Ensure no developer work on dev can disturb the live site
+
+Provide clear commands and steps for:
+
+Local development
+
+Dev deployment
+
+Production deployment
+
+🔐 ENVIRONMENT REQUIREMENTS
+
+Use environment variables only (no secrets in code)
+
+Support:
+
+NODE_ENV=development
+
+NODE_ENV=production
+
+Backend must read:
+
+DATABASE_URL
+
+Frontend must read:
+
+NEXT_PUBLIC_API_URL
+
+🧱 WHAT YOU MUST DO
+
+Analyze the repository structure and identify:
+
+Frontend location
+
+Backend location
+
+Verify and fix:
+
+build scripts
+
+start scripts
+
+production compatibility
+
+Prepare:
+
+Render build & start commands
+
+Vercel deployment compatibility
+
+Ensure:
+
+Dev backend connects only to Neon DEV DB
+
+Prod backend connects only to Neon PROD DB
+
+📤 REQUIRED OUTPUT FORMAT
+
+You must respond with ONLY the following sections:
+
+1. Repository Structure Summary
+
+(frontend path, backend path)
+
+2. Environment Variables
+
+Local
+
+Dev (Render)
+
+Production (Render + Vercel)
+
+3. Backend Deployment (Render)
+
+Dev service setup
+
+Prod service setup
+
+Exact build & start commands
+
+4. Frontend Deployment (Vercel)
+
+Production branch config
+
+Preview / dev config
+
+5. Git Workflow Rules
+
+Daily developer workflow
+
+Release workflow (dev → main)
+
+6. Validation Checklist
+
+(Steps to confirm live site is safe)
+
+⚠️ STRICT RULES
+
+Do NOT suggest force push
+
+Do NOT deploy production from dev
+
+Do NOT mix dev and prod databases
+
+Assume this is a real production system with live users
+
+Think carefully and prepare the project like a real company deployment.

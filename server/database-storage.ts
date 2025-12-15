@@ -629,6 +629,53 @@ export class DatabaseStorage implements IStorage {
     return (result.rowCount ?? 0) > 0;
   }
 
+  // Client-specific data methods (for client dashboard)
+  async getRequirementsByCompany(companyName: string): Promise<Requirement[]> {
+    return await db.select().from(requirements).where(
+      sql`LOWER(${requirements.company}) = LOWER(${companyName})`
+    );
+  }
+
+  async getJobApplicationsByCompany(companyName: string): Promise<JobApplication[]> {
+    return await db.select().from(jobApplications).where(
+      sql`LOWER(${jobApplications.company}) = LOWER(${companyName})`
+    );
+  }
+
+  async getRevenueMappingsByClientName(clientName: string): Promise<RevenueMapping[]> {
+    return await db.select().from(revenueMappings).where(
+      sql`LOWER(${revenueMappings.clientName}) = LOWER(${clientName})`
+    );
+  }
+
+  async getClientDashboardStats(companyName: string): Promise<{
+    rolesAssigned: number;
+    totalPositions: number;
+    activeRoles: number;
+    successfulHires: number;
+    pausedRoles: number;
+    withdrawnRoles: number;
+  }> {
+    const reqs = await this.getRequirementsByCompany(companyName);
+    const activeRoles = reqs.filter(r => r.status === 'open' || r.status === 'in_progress').length;
+    const completedRoles = reqs.filter(r => r.status === 'completed').length;
+    const closures = await this.getRevenueMappingsByClientName(companyName);
+    
+    return {
+      rolesAssigned: reqs.length,
+      totalPositions: reqs.length,
+      activeRoles,
+      successfulHires: closures.length,
+      pausedRoles: 0,
+      withdrawnRoles: 0
+    };
+  }
+
+  async getClientPipelineData(companyName: string): Promise<any[]> {
+    const applications = await this.getJobApplicationsByCompany(companyName);
+    return applications;
+  }
+
   // Impact Metrics methods
   async createImpactMetrics(metrics: InsertImpactMetrics): Promise<ImpactMetrics> {
     const [newMetrics] = await db.insert(impactMetrics).values(metrics).returning();

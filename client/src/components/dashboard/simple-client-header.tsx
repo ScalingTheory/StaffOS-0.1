@@ -1,20 +1,24 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ChevronDown, User, Settings, LogOut, HelpCircle } from "lucide-react";
 import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useCandidateAuth } from "@/contexts/auth-context";
+import { useAuth, useEmployeeAuth } from "@/contexts/auth-context";
 import { SignOutDialog } from "@/components/ui/sign-out-dialog";
 import { ProfileSettingsModal } from "@/components/dashboard/modals/profile-settings-modal";
 
 interface SimpleClientHeaderProps {
   companyName?: string;
+  clientName?: string;
+  clientEmail?: string;
   onHelpClick?: () => void;
 }
 
 export default function SimpleClientHeader({ 
-  companyName = "Gumlet Marketing Private Limited",
+  companyName = "Loading...",
+  clientName,
+  clientEmail,
   onHelpClick
 }: SimpleClientHeaderProps) {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -23,15 +27,16 @@ export default function SimpleClientHeader({
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { logout } = useAuth();
-  const candidate = useCandidateAuth();
+  const employee = useEmployeeAuth();
   
-  const userName = candidate?.fullName || "Candidate User";
-  const userImage = (candidate as any)?.profilePicture || "/api/placeholder/32/32";
+  const userName = clientName || employee?.name || "Client User";
+  const userEmail = clientEmail || employee?.email || "";
+  const userImage = "/api/placeholder/32/32";
   
-  // Logout mutation for candidates
+  // Logout mutation for client (employee)
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest('POST', '/api/auth/candidate-logout', {});
+      const res = await apiRequest('POST', '/api/auth/logout', {});
       return await res.json();
     },
     onSuccess: () => {
@@ -40,16 +45,15 @@ export default function SimpleClientHeader({
         title: "Logged out successfully",
         description: "You have been signed out.",
       });
-      navigate('/');
+      navigate('/employer-login');
     },
-    onError: (error: any) => {
-      // Even if API fails, clear the session to ensure user is logged out
+    onError: () => {
       logout();
       toast({
         title: "Logged out",
         description: "You have been signed out (session cleared locally).",
       });
-      navigate('/');
+      navigate('/employer-login');
     }
   });
 
@@ -96,7 +100,7 @@ export default function SimpleClientHeader({
               onClick={() => setShowUserDropdown(!showUserDropdown)}
               onBlur={() => setTimeout(() => setShowUserDropdown(false), 150)}
               className="flex items-center gap-2 px-3 py-2 text-gray-700 hover:text-gray-900 transition-all duration-200 hover:bg-gray-100 rounded-lg"
-              data-testid="button-candidate-user-dropdown"
+              data-testid="button-client-user-dropdown"
             >
               <img 
                 src={userImage} 
@@ -126,8 +130,13 @@ export default function SimpleClientHeader({
                         {userName}
                       </div>
                       <div className="text-sm text-gray-500 truncate">
-                        {candidate?.designation || "Candidate"} - {companyName}
+                        Client - {companyName}
                       </div>
+                      {userEmail && (
+                        <div className="text-xs text-gray-400 truncate">
+                          {userEmail}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -137,7 +146,7 @@ export default function SimpleClientHeader({
                   <button 
                     onClick={handleProfileSettings}
                     className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-150"
-                    data-testid="button-candidate-profile-settings"
+                    data-testid="button-client-profile-settings"
                   >
                     <User size={16} />
                     <span>Profile Settings</span>
@@ -146,7 +155,7 @@ export default function SimpleClientHeader({
                   <button 
                     onClick={handleAccountSettings}
                     className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-150"
-                    data-testid="button-candidate-account-settings"
+                    data-testid="button-client-account-settings"
                   >
                     <Settings size={16} />
                     <span>Account Settings</span>
@@ -158,7 +167,7 @@ export default function SimpleClientHeader({
                     onClick={handleLogout}
                     disabled={logoutMutation.isPending}
                     className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors duration-150 disabled:opacity-50"
-                    data-testid="button-candidate-header-logout"
+                    data-testid="button-client-header-logout"
                   >
                     <LogOut size={16} />
                     <span>{logoutMutation.isPending ? 'Signing out...' : 'Sign out'}</span>

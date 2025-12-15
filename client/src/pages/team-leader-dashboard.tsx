@@ -324,32 +324,13 @@ export default function TeamLeaderDashboard() {
     return [];
   }, [teamMembers]);
   
-  // Calculate priority distribution dynamically from real data with toughness breakdown
-  // Handle cases where toughness may be undefined - default to 'Medium'
-  const priorityDistribution = useMemo(() => {
-    const getToughness = (req: any) => req.toughness || 'Medium';
-    const HIGH = {
-      Easy: requirementsData.filter((req: any) => req.criticality === 'HIGH' && getToughness(req) === 'Easy').length,
-      Medium: requirementsData.filter((req: any) => req.criticality === 'HIGH' && getToughness(req) === 'Medium').length,
-      Tough: requirementsData.filter((req: any) => req.criticality === 'HIGH' && getToughness(req) === 'Tough').length,
-    };
-    const MEDIUM = {
-      Easy: requirementsData.filter((req: any) => req.criticality === 'MEDIUM' && getToughness(req) === 'Easy').length,
-      Medium: requirementsData.filter((req: any) => req.criticality === 'MEDIUM' && getToughness(req) === 'Medium').length,
-      Tough: requirementsData.filter((req: any) => req.criticality === 'MEDIUM' && getToughness(req) === 'Tough').length,
-    };
-    const LOW = {
-      Easy: requirementsData.filter((req: any) => req.criticality === 'LOW' && getToughness(req) === 'Easy').length,
-      Medium: requirementsData.filter((req: any) => req.criticality === 'LOW' && getToughness(req) === 'Medium').length,
-      Tough: requirementsData.filter((req: any) => req.criticality === 'LOW' && getToughness(req) === 'Tough').length,
-    };
-    const high = requirementsData.filter((req: any) => req.criticality === 'HIGH').length;
-    const medium = requirementsData.filter((req: any) => req.criticality === 'MEDIUM').length;
-    const low = requirementsData.filter((req: any) => req.criticality === 'LOW').length;
-    const total = requirementsData.length;
-    
-    return { HIGH, MEDIUM, LOW, high, medium, low, total };
-  }, [requirementsData]);
+  // Static priority distribution - fixed counts that never change
+  // These represent the expected number of resumes to be delivered based on priority/criticality
+  const priorityDistribution = {
+    HIGH: { Easy: 6, Medium: 4, Tough: 2 },
+    MEDIUM: { Easy: 5, Medium: 3, Tough: 2 },
+    LOW: { Easy: 4, Medium: 3, Tough: 2 },
+  };
 
   // Chat team members are derived from real team members query
   const chatTeamMembers = useMemo(() => {

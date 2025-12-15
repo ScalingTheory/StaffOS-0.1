@@ -164,21 +164,28 @@ export default function MasterDatabase() {
     }));
   }, [candidatesRaw]);
 
-  // Map employees to EmployeeData format
+  // Map employees to EmployeeData format (Employees Master)
+  // Include TL, TA, and other employees but exclude admin accounts (STAFFOS*) and clients
   const employeeData: EmployeeData[] = useMemo(() => {
-    return employeesRaw.map((employee: any) => ({
-      id: employee.id,
-      name: employee.name || '-',
-      position: employee.designation || employee.role || '-',
-      experience: '-',
-      skills: employee.department || '-',
-      source: 'Admin',
-      status: (employee.isActive ? 'Active' : (employee.employmentStatus === 'Resigned' ? 'Resigned' : 'Inactive')) as EmployeeStatus,
-      uploadedDate: formatDate(employee.joiningDate || employee.createdAt),
-      email: employee.email,
-      phone: employee.phone,
-      department: employee.department,
-    }));
+    return employeesRaw
+      .filter((employee: any) => 
+        !employee.employeeId?.startsWith('STAFFOS') && 
+        employee.role !== 'client' &&
+        employee.role !== 'admin'
+      )
+      .map((employee: any) => ({
+        id: employee.id,
+        name: employee.name || '-',
+        position: employee.designation || employee.role || '-',
+        experience: '-',
+        skills: employee.department || '-',
+        source: 'Admin',
+        status: (employee.isActive ? 'Active' : (employee.employmentStatus === 'Resigned' ? 'Resigned' : 'Inactive')) as EmployeeStatus,
+        uploadedDate: formatDate(employee.joiningDate || employee.createdAt),
+        email: employee.email,
+        phone: employee.phone,
+        department: employee.department,
+      }));
   }, [employeesRaw]);
 
   // Map clients to ClientData format

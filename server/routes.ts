@@ -194,6 +194,14 @@ function requireAdminAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// Authentication middleware for client routes ONLY
+function requireClientAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.employeeId || req.session.employeeRole !== 'client') {
+    return res.status(403).json({ message: "Access denied. Client authentication required." });
+  }
+  next();
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize Passport for Google OAuth
   app.use(passport.initialize());
@@ -4007,11 +4015,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clientCode = await storage.generateNextClientCode();
 
       // Create minimal client record with just the essential information
+      // Mark as login-only so it doesn't appear in Master Data tables
       const minimalClientData = {
         clientCode,
         brandName: validatedData.name,
         email: validatedData.email,
         currentStatus: 'active',
+        isLoginOnly: true,
         createdAt: new Date().toISOString(),
       };
       
@@ -5881,6 +5891,220 @@ export async function registerRoutes(app: Express): Promise<Server> {
       { month: 'May', submissionToShortList: 0, interviewToOffer: 0, offerAcceptance: 0, earlyAttrition: 0 },
       { month: 'Jun', submissionToShortList: 0, interviewToOffer: 0, offerAcceptance: 0, earlyAttrition: 0 }
     ]);
+  });
+
+  // Client Dashboard Stats - Get authenticated client's dashboard statistics
+  app.get("/api/client/dashboard-stats", requireClientAuth, async (req, res) => {
+    try {
+      const employee = await storage.getEmployeeById(req.session.employeeId!);
+      if (!employee) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      
+      // Get client by email to find company name
+      const clients = await storage.getAllClients();
+      const client = clients.find(c => c.email === employee.email);
+      const companyName = client?.brandName || employee.name;
+      
+      const stats = await storage.getClientDashboardStats(companyName);
+      res.json(stats);
+    } catch (error) {
+      console.error('Get client dashboard stats error:', error);
+      res.status(500).json({ message: "Failed to get dashboard stats" });
+    }
+  });
+
+  // Client Requirements - Get requirements for client's company
+  app.get("/api/client/requirements", requireClientAuth, async (req, res) => {
+    try {
+      const employee = await storage.getEmployeeById(req.session.employeeId!);
+      if (!employee) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      
+      const clients = await storage.getAllClients();
+      const client = clients.find(c => c.email === employee.email);
+      const companyName = client?.brandName || employee.name;
+      
+      const requirements = await storage.getRequirementsByCompany(companyName);
+      
+      // Transform requirements for client view
+      const rolesData = requirements.map(req => ({
+        roleId: req.id,
+        role: req.position,
+        team: req.teamLead || 'N/A',
+        recruiter: req.talentAdvisor || 'N/A',
+        sharedOn: req.createdAt ? new Date(req.createdAt).toLocaleDateString('en-GB', { 
+          day: '2-digit', month: '2-digit', year: 'numeric' 
+        }).replace(/\//g, '-') : 'N/A',
+        status: req.status === 'open' ? 'Active' : req.status === 'in_progress' ? 'Active' : req.status === 'completed' ? 'Closed' : 'Paused',
+        profilesShared: 0,
+        lastActive: req.createdAt ? new Date(req.createdAt).toLocaleDateString('en-GB', { 
+          day: '2-digit', month: '2-digit', year: 'numeric' 
+        }).replace(/\//g, '-') : 'N/A'
+      }));
+      
+      res.json(rolesData);
+    } catch (error) {
+      console.error('Get client requirements error:', error);
+      res.status(500).json({ message: "Failed to get requirements" });
+    }
+  });
+
+  // Client Pipeline - Get pipeline data for client's company
+  app.get("/api/client/pipeline", requireClientAuth, async (req, res) => {
+    try {
+      const employee = await storage.getEmployeeById(req.session.employeeId!);
+      if (!employee) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      
+      const clients = await storage.getAllClients();
+      const client = clients.find(c => c.email === employee.email);
+      const companyName = client?.brandName || employee.name;
+      
+      const applications = await storage.getJobApplicationsByCompany(companyName);
+      
+      // Transform applications to pipeline data format
+      const pipelineData = applications.map((app, index) => {
+        const statusMap: Record<string, string> = {
+          'In Process': 'L1',
+          'In-Process': 'L1',
+          'Shortlisted': 'L1',
+          'Reviewed': 'L1',
+          'Screened Out': 'Rejected',
+          'L1': 'L1',
+          'L2': 'L2',
+          'L3': 'L3',
+          'Final Round': 'Final Round',
+          'HR Round': 'HR Round',
+          'Selected': 'Closure',
+          'Joined': 'Closure',
+          'Interview Scheduled': 'L1',
+          'Applied': 'L1',
+          'Offer Stage': 'Offer Stage',
+          'Closure': 'Closure',
+          'Offer Drop': 'Rejected',
+          'Declined': 'Rejected',
+          'Rejected': 'Rejected'
+        };
+
+        return {
+          id: app.id || `app-${index + 1}`,
+          candidateName: app.candidateName || 'Unknown',
+          roleApplied: app.jobTitle || 'N/A',
+          currentStatus: statusMap[app.status] || 'L1',
+          email: app.candidateEmail || 'N/A',
+          phone: app.candidatePhone || 'N/A',
+          appliedDate: app.appliedDate ? new Date(app.appliedDate).toLocaleDateString('en-GB', { 
+            day: '2-digit', month: '2-digit', year: 'numeric' 
+          }).replace(/\//g, '-') : 'N/A'
+        };
+      });
+      
+      res.json(pipelineData);
+    } catch (error) {
+      console.error('Get client pipeline error:', error);
+      res.status(500).json({ message: "Failed to get pipeline data" });
+    }
+  });
+
+  // Client Update Application Status - Allow client to update status (e.g., reject)
+  app.patch("/api/client/applications/:id/status", requireClientAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, reason } = req.body;
+      
+      if (!status) {
+        return res.status(400).json({ message: "Status is required" });
+      }
+      
+      const application = await storage.updateJobApplicationStatus(id, status);
+      if (!application) {
+        return res.status(404).json({ message: "Application not found" });
+      }
+      
+      res.json({ success: true, application });
+    } catch (error) {
+      console.error('Update application status error:', error);
+      res.status(500).json({ message: "Failed to update application status" });
+    }
+  });
+
+  // Client Closures - Get closure reports for client's company
+  app.get("/api/client/closures", requireClientAuth, async (req, res) => {
+    try {
+      const employee = await storage.getEmployeeById(req.session.employeeId!);
+      if (!employee) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      
+      const clients = await storage.getAllClients();
+      const client = clients.find(c => c.email === employee.email);
+      const companyName = client?.brandName || employee.name;
+      
+      const closures = await storage.getRevenueMappingsByClientName(companyName);
+      
+      // Transform closures for client view
+      const closureReports = closures.map(closure => ({
+        candidate: closure.candidateName || 'N/A',
+        position: closure.position || 'N/A',
+        advisor: closure.talentAdvisorName || 'N/A',
+        offered: closure.offeredDate || 'N/A',
+        joined: closure.closureDate || 'N/A'
+      }));
+      
+      res.json(closureReports);
+    } catch (error) {
+      console.error('Get client closures error:', error);
+      res.status(500).json({ message: "Failed to get closures" });
+    }
+  });
+
+  // Client Profile - Get current client's profile with linked client details
+  app.get("/api/client/profile", requireClientAuth, async (req, res) => {
+    try {
+      const employee = await storage.getEmployeeById(req.session.employeeId!);
+      if (!employee) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      
+      const clients = await storage.getAllClients();
+      const client = clients.find(c => c.email === employee.email);
+      
+      // Check if client profile is linked (admin created a client record with matching email)
+      const profileLinked = !!client;
+      
+      res.json({
+        id: employee.id,
+        name: employee.name,
+        email: employee.email,
+        phone: employee.phone,
+        profileLinked,
+        // Basic company info
+        company: client?.brandName || employee.name,
+        // Extended client details (only if profile is linked)
+        clientDetails: profileLinked ? {
+          clientCode: client.clientCode,
+          brandName: client.brandName,
+          incorporatedName: client.incorporatedName,
+          gstin: client.gstin,
+          address: client.address,
+          location: client.location,
+          spoc: client.spoc,
+          website: client.website,
+          linkedin: client.linkedin,
+          category: client.category,
+          currentStatus: client.currentStatus,
+          startDate: client.startDate
+        } : null,
+        bannerImage: null,
+        profilePicture: null
+      });
+    } catch (error) {
+      console.error('Get client profile error:', error);
+      res.status(500).json({ message: "Failed to get profile" });
+    }
   });
 
   app.post("/api/support/send-message", async (req, res) => {

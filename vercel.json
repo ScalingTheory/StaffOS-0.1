@@ -1,25 +1,26 @@
 {
-  "buildCommand": "npm run build:frontend",
-  "outputDirectory": "dist/public",
-  "installCommand": "npm install",
-  "framework": "vite",
-  "rewrites": [
+  "projects": [
     {
-      "source": "/api/:path*",
-      "destination": "${BACKEND_URL}/api/:path*"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
+      "rootDirectory": "client",
+      "framework": "vite",
+      "installCommand": "npm install",
+      "buildCommand": "npm run build",
+      "outputDirectory": "dist/public",
+      "rewrites": [
+        {
+          "source": "/(.*)",
+          "destination": "/index.html"
+        }
+      ],
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "X-XSS-Protection", "value": "1; mode=block" }
+        {
+          "source": "/(.*)",
+          "headers": [
+            { "key": "X-Content-Type-Options", "value": "nosniff" },
+            { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+            { "key": "X-XSS-Protection", "value": "1; mode=block" }
+          ]
+        }
       ]
     }
   ]

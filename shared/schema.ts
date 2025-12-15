@@ -318,6 +318,14 @@ export const candidates = pgTable("candidates", {
   ectc: text("ectc"), // Expected CTC
   noticePeriod: text("notice_period"), // Notice period
   position: text("position"), // Position applied for
+  // Filter fields for sourcing
+  pedigreeLevel: text("pedigree_level"), // Tier 1, Tier 2, Tier 3, Others
+  companyLevel: text("company_level"), // Startup, Mid-size, Enterprise, MNC
+  companySector: text("company_sector"), // Technology, Finance, Healthcare, etc.
+  productService: text("product_service"), // SaaS, Product, Service, Hybrid
+  productCategory: text("product_category"), // B2B, B2C, B2B2C
+  productDomain: text("product_domain"), // Web Development, Mobile Apps, etc.
+  employmentType: text("employment_type"), // Full-time, Part-time, Contract, etc.
   isActive: boolean("is_active").default(true),
   isVerified: boolean("is_verified").default(false),
   createdAt: text("created_at").notNull(),
@@ -405,6 +413,7 @@ export const clients = pgTable("clients", {
   startDate: text("start_date"),
   referral: text("referral"),
   currentStatus: text("current_status").default("active"), // active, frozen, churned
+  isLoginOnly: boolean("is_login_only").default(false), // true = User Management login only, false = Master Data client
   createdAt: text("created_at").notNull(),
 });
 
